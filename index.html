@@ -1,0 +1,754 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hành Trình Rước Kim Phượng 💗</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+    margin:0;
+    background:linear-gradient(135deg,#ffe4ef,#e6e4ff);
+    font-family:Arial,sans-serif;
+    color:#813c69;
+    text-align:center;
+}
+h1{margin:18px 8px 6px;font-size:clamp(22px,4vw,34px)}
+p{margin:8px}
+.game{
+    width:min(960px,96vw);
+    margin:12px auto;
+    background:#fff8fc;
+    border:4px solid #fff;
+    border-radius:22px;
+    overflow:hidden;
+    box-shadow:0 10px 35px #b66b9633;
+}
+canvas{
+    display:block;
+    width:100%;
+    height:auto;
+    background:#d9f5d4;
+}
+.info{
+    display:flex;
+    justify-content:space-around;
+    flex-wrap:wrap;
+    gap:10px;
+    padding:12px;
+    font-weight:bold;
+}
+button{
+    border:0;
+    background:#f27caf;
+    color:white;
+    padding:12px 20px;
+    margin:5px;
+    border-radius:22px;
+    font-size:15px;
+    font-weight:bold;
+    cursor:pointer;
+}
+button:hover{background:#dc5894}
+#message{
+    min-height:28px;
+    padding:5px 12px;
+    font-weight:bold;
+}
+.controls{
+    display:none;
+    justify-content:center;
+    gap:8px;
+    flex-wrap:wrap;
+    padding:5px 10px 15px;
+}
+.controls button{min-width:58px}
+.modal{
+    display:none;
+    position:fixed;
+    inset:0;
+    z-index:10;
+    background:#32162fc9;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+}
+.letter{
+    background:#fff8ed;
+    color:#914d70;
+    width:min(480px,95vw);
+    padding:28px;
+    border-radius:20px;
+    box-shadow:0 0 35px #ffb9dc;
+    line-height:1.8;
+}
+.letter h2{color:#e55e98}
+</style>
+</head>
+
+<body>
+<h1>💗 HÀNH TRÌNH RƯỚC KIM PHƯỢNG 💗</h1>
+<p>Hùng Duy hãy thu thập 10 trái tim để đến bên Kim Phượng!</p>
+
+<div class="game">
+    <canvas id="game" width="900" height="500"></canvas>
+
+    <div class="info">
+        <span id="hp">❤️ Máu: 3</span>
+        <span id="score">💗 Trái tim: 0/10</span>
+        <span id="status">🎮 Đang chơi</span>
+    </div>
+
+    <div id="message">Dùng WASD hoặc phím mũi tên để di chuyển nha!</div>
+
+    <div class="controls">
+        <button data-key="ArrowLeft">⬅️</button>
+        <button data-key="ArrowUp">⬆️</button>
+        <button data-key="ArrowDown">⬇️</button>
+        <button data-key="ArrowRight">➡️</button>
+    </div>
+
+    <button id="startBtn">🔄 Chơi lại</button>
+    <button id="letterBtn">💌 Xem thư tình</button>
+</div>
+
+<div class="modal" id="modal">
+    <div class="letter">
+        <h2 id="letterTitle">💌 Gửi Kim Phượng 💗</h2>
+        <p id="letterText">
+            Phượng ơi, hành trình đến bên em có hơi khó khăn
+            vì Ba Vợ và Mẹ Vợ kiểm tra hơi gắt một chút 😂
+            Nhưng Duy vẫn muốn cố gắng để mang đến cho em
+            thật nhiều niềm vui và những kỷ niệm đáng nhớ.
+        </p>
+        <p>🌷 Chúc chúng ta luôn vui vẻ và trân trọng nhau! 🌷</p>
+        <button id="closeBtn">Đóng thư 💗</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const W = canvas.width;
+const H = canvas.height;
+
+let keys = {};
+let hearts = [];
+let particles = [];
+let collected = 0;
+let hp = 3;
+let elapsed = 0;
+let lastTime = 0;
+let gameOver = false;
+let won = false;
+let invincible = 0;
+let audioContext = null;
+let musicOn = false;
+
+const player = {x:75,y:250,r:17,speed:220};
+const girl = {x:125,y:250,r:16};
+const gate = {x:845,y:250,r:38};
+
+const bosses = [
+    {
+        name:"BA VỢ",
+        emoji:"👨‍🦳",
+        x:370,y:125,
+        speed:88,
+        cooldown:2.2,
+        timer:1.2,
+        state:"idle",
+        stateTimer:0,
+        radius:72,
+        chat:"ĐỨNG LẠI! CẬU ĐỊNH ĐƯA CON GÁI TÔI ĐI ĐÂU?",
+        chatTimer:4,
+        phase:0
+    },
+    {
+        name:"MẸ VỢ",
+        emoji:"👩‍🦳",
+        x:620,y:370,
+        speed:66,
+        cooldown:3.5,
+        timer:2.3,
+        state:"idle",
+        stateTimer:0,
+        radius:112,
+        chat:"TRÁNH XA CON GÁI TUI RA!",
+        chatTimer:4,
+        phase:2
+    }
+];
+
+function rand(min,max){
+    return Math.random()*(max-min)+min;
+}
+
+function distance(a,b){
+    return Math.hypot(a.x-b.x,a.y-b.y);
+}
+
+function say(text){
+    document.getElementById("message").textContent=text;
+}
+
+function text(str,x,y,size=16,color="#813c69"){
+    ctx.font=`bold ${size}px Arial`;
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.fillStyle=color;
+    ctx.fillText(str,x,y);
+}
+
+function roundedRect(x,y,w,h,r,color){
+    ctx.fillStyle=color;
+    ctx.beginPath();
+    ctx.roundRect(x,y,w,h,r);
+    ctx.fill();
+}
+
+function createHearts(){
+    hearts=[];
+    for(let i=0;i<10;i++){
+        hearts.push({
+            x:rand(70,810),
+            y:rand(65,435),
+            taken:false,
+            phase:rand(0,6)
+        });
+    }
+}
+
+function resetGame(){
+    player.x=75;
+    player.y=250;
+    girl.x=125;
+    girl.y=250;
+    hp=3;
+    collected=0;
+    elapsed=0;
+    invincible=0;
+    gameOver=false;
+    won=false;
+    particles=[];
+    createHearts();
+
+    bosses[0].x=370;
+    bosses[0].y=125;
+    bosses[1].x=620;
+    bosses[1].y=370;
+
+    bosses.forEach((b,i)=>{
+        b.timer=1.5+i;
+        b.state="idle";
+        b.stateTimer=0;
+        b.chatTimer=0;
+    });
+
+    updateUI();
+    say("Hùng Duy cố lên! Nhớ né kỹ năng của Ba Vợ và Mẹ Vợ nha 😂");
+}
+
+function updateUI(){
+    document.getElementById("hp").textContent=
+        "❤️ Máu: "+"❤️".repeat(hp)+"🖤".repeat(3-hp);
+
+    document.getElementById("score").textContent=
+        `💗 Trái tim: ${collected}/10`;
+
+    document.getElementById("status").textContent=
+        won?"🏆 Chiến thắng!":gameOver?"💔 Thử lại nha":"🎮 Đang chơi";
+}
+
+function burst(x,y,color){
+    for(let i=0;i<12;i++){
+        particles.push({
+            x,y,
+            vx:rand(-100,100),
+            vy:rand(-130,40),
+            life:rand(.3,.8),
+            color
+        });
+    }
+}
+
+function damageBossSkill(b){
+    const d=distance(player,b);
+
+    if(b.name==="BA VỢ"){
+        if(d<b.radius+player.r){
+            hurt("Ba Vợ tung chưởng! Né nhanh b ơi! ⚡");
+        }
+    }else{
+        if(d<b.radius+player.r){
+            hurt("Mẹ Vợ tạo sóng đẩy Hùng Duy ra xa! 💨");
+
+            const dx=player.x-b.x;
+            const dy=player.y-b.y;
+            const len=Math.hypot(dx,dy)||1;
+
+            player.x+=dx/len*75;
+            player.y+=dy/len*75;
+
+            player.x=Math.max(player.r,Math.min(W-player.r,player.x));
+            player.y=Math.max(player.r,Math.min(H-player.r,player.y));
+        }
+    }
+}
+
+function hurt(message){
+    if(invincible>0||gameOver||won)return;
+
+    hp--;
+    invincible=1.2;
+    burst(player.x,player.y,"#ff679d");
+    say(message);
+
+    if(hp<=0){
+        hp=0;
+        gameOver=true;
+        say("Hùng Duy hết máu rồi! Bấm Chơi lại để thử tiếp nha 💗");
+    }
+
+    updateUI();
+}
+
+function updateBoss(b,dt){
+    if(gameOver||won)return;
+
+    const dx=player.x-b.x;
+    const dy=player.y-b.y;
+    const d=Math.hypot(dx,dy)||1;
+
+    b.chatTimer=Math.max(0,b.chatTimer-dt);
+    b.timer-=dt;
+
+    if(b.state==="warning"){
+        b.stateTimer-=dt;
+
+        if(b.stateTimer<=0){
+            damageBossSkill(b);
+            burst(b.x,b.y,b.name==="BA VỢ"?"#ffb347":"#b99cff");
+            b.state="idle";
+            b.timer=b.name==="BA VỢ"?2.8:4.2;
+        }
+    }else{
+        // Boss duoi theo nguoi choi
+        if(d>55){
+            b.x+=dx/d*b.speed*dt;
+            b.y+=dy/d*b.speed*dt;
+        }
+
+        // Kich hoat ky nang
+        if(b.timer<=0){
+            b.state="warning";
+            b.stateTimer=b.name==="BA VỢ"?.85:1.15;
+
+            b.chat=b.name==="BA VỢ"
+                ?"ĐỨNG LẠI! ĂN CHƯỞNG CỦA TA ĐÂY! ⚡"
+                :"TRÁNH XA CON GÁI TUI RA! SÓNG ĐẨY ĐÂY! 💨";
+
+            b.chatTimer=2.3;
+
+            say(b.name==="BA VỢ"
+                ?"Ba Vợ đang tích lực! Chạy ra khỏi vòng đỏ! ⚡"
+                :"Mẹ Vợ chuẩn bị tạo sóng! Né ra xa! 💨");
+        }
+    }
+
+    b.x=Math.max(25,Math.min(W-25,b.x));
+    b.y=Math.max(70,Math.min(H-25,b.y));
+
+    // Cham truc tiep voi boss
+    if(distance(player,b)<player.r+23){
+        hurt(b.name==="BA VỢ"
+            ?"Ba Vợ bắt gặp rồi! Chạy mau! 😂"
+            :"Mẹ Vợ chặn đường rồi! Chạy mau! 😂");
+    }
+}
+
+function update(dt){
+    elapsed+=dt;
+    invincible=Math.max(0,invincible-dt);
+
+    if(gameOver||won)return;
+
+    let dx=0,dy=0;
+    if(keys.ArrowLeft||keys.a||keys.A)dx--;
+    if(keys.ArrowRight||keys.d||keys.D)dx++;
+    if(keys.ArrowUp||keys.w||keys.W)dy--;
+    if(keys.ArrowDown||keys.s||keys.S)dy++;
+
+    const len=Math.hypot(dx,dy)||1;
+    player.x+=dx/len*player.speed*dt;
+    player.y+=dy/len*player.speed*dt;
+
+    player.x=Math.max(player.r,Math.min(W-player.r,player.x));
+    player.y=Math.max(65,Math.min(H-player.r,player.y));
+
+    // Kim Phuong di theo Hung Duy
+    const gx=player.x-girl.x;
+    const gy=player.y-girl.y;
+    const gd=Math.hypot(gx,gy);
+
+    if(gd>42){
+        girl.x+=gx/gd*130*dt;
+        girl.y+=gy/gd*130*dt;
+    }
+
+    // Thu thap trai tim
+    hearts.forEach(h=>{
+        if(!h.taken&&distance(player,h)<26){
+            h.taken=true;
+            collected++;
+            burst(h.x,h.y,"#ff4f98");
+            say("Thu được một trái tim! Kim Phượng vui lắm đó 💗");
+            updateUI();
+        }
+    });
+
+    bosses.forEach(b=>updateBoss(b,dt));
+
+    particles.forEach(p=>{
+        p.x+=p.vx*dt;
+        p.y+=p.vy*dt;
+        p.life-=dt;
+    });
+    particles=particles.filter(p=>p.life>0);
+
+    // Cong thanh chi mo khi du 10 trai tim
+    if(collected>=10&&distance(player,gate)<gate.r+player.r){
+        won=true;
+        say("Chúc mừng! Hùng Duy đã đến được bên Kim Phượng! 💖");
+        document.getElementById("letterTitle").textContent="💖 Chúc mừng hai bạn!";
+        document.getElementById("letterText").textContent=
+            "Hùng Duy đã vượt qua thử thách của Ba Vợ và Mẹ Vợ để đến bên Kim Phượng. Mong hai bạn luôn vui vẻ, quan tâm và tôn trọng nhau. 💗";
+        document.getElementById("modal").style.display="flex";
+        updateUI();
+    }else if(collected<10&&distance(player,gate)<gate.r+player.r){
+        say("Cần thu thập đủ 10 trái tim rồi mới mở cổng nha! 💗");
+    }
+}
+
+function drawBackground(){
+    // Bau troi
+    const sky=ctx.createLinearGradient(0,0,0,H);
+    sky.addColorStop(0,"#c8efff");
+    sky.addColorStop(1,"#f9f0ff");
+    ctx.fillStyle=sky;
+    ctx.fillRect(0,0,W,H);
+
+    // Mat co
+    ctx.fillStyle="#b8e9ac";
+    ctx.fillRect(0,55,W,H-55);
+
+    // Con duong
+    ctx.fillStyle="#f8dfd3";
+    ctx.beginPath();
+    ctx.ellipse(450,275,330,135,0,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.strokeStyle="#fff4e8";
+    ctx.lineWidth=5;
+    ctx.setLineDash([12,12]);
+    ctx.beginPath();
+    ctx.ellipse(450,275,280,105,0,0,Math.PI*2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // May
+    drawCloud(110,55);
+    drawCloud(360,35);
+    drawCloud(700,55);
+
+    // Cay
+    for(const x of [35,150,750,865]){
+        ctx.fillStyle="#9b674f";
+        ctx.fillRect(x-5,150,10,48);
+        ctx.fillStyle="#65b879";
+        ctx.beginPath();
+        ctx.arc(x,145,27,0,Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle="#85d58b";
+        ctx.beginPath();
+        ctx.arc(x-12,137,15,0,Math.PI*2);
+        ctx.fill();
+    }
+
+    // Hang rao nho
+    ctx.strokeStyle="#fff8ed";
+    ctx.lineWidth=4;
+    for(let x=220;x<690;x+=24){
+        ctx.beginPath();
+        ctx.moveTo(x,465);
+        ctx.lineTo(x,485);
+        ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(215,470);
+    ctx.lineTo(700,470);
+    ctx.stroke();
+
+    // Bong hoa
+    for(let i=0;i<24;i++){
+        const x=(i*83+25)%W;
+        const y=80+(i*61)%390;
+        ctx.fillStyle=i%2?"#ff91bd":"#fff1a6";
+        ctx.beginPath();
+        ctx.arc(x,y,4,0,Math.PI*2);
+        ctx.fill();
+    }
+
+    text("🌷 KHU VƯỜN TÌNH YÊU 🌷",W/2,23,18,"#59875f");
+}
+
+function drawCloud(x,y){
+    ctx.fillStyle="#ffffffbb";
+    ctx.beginPath();
+    ctx.arc(x,y,17,0,Math.PI*2);
+    ctx.arc(x+20,y-8,22,0,Math.PI*2);
+    ctx.arc(x+43,y,17,0,Math.PI*2);
+    ctx.fill();
+}
+
+function drawGate(){
+    const open=collected>=10;
+
+    ctx.fillStyle=open?"#ff91bd":"#b8a6bf";
+    ctx.fillRect(817,190,9,120);
+    ctx.fillRect(865,190,9,120);
+
+    ctx.strokeStyle=open?"#ff73aa":"#9887a4";
+    ctx.lineWidth=7;
+    ctx.beginPath();
+    ctx.moveTo(821,200);
+    ctx.lineTo(870,200);
+    ctx.moveTo(821,225);
+    ctx.lineTo(870,225);
+    ctx.moveTo(821,250);
+    ctx.lineTo(870,250);
+    ctx.moveTo(821,275);
+    ctx.lineTo(870,275);
+    ctx.moveTo(821,300);
+    ctx.lineTo(870,300);
+    ctx.stroke();
+
+    text(open?"💖 CỔNG TÌNH YÊU":"🔒 CỔNG KHÓA",845,170,12,"#85486b");
+}
+
+function drawHearts(){
+    hearts.forEach(h=>{
+        if(h.taken)return;
+
+        const y=h.y+Math.sin(elapsed*3+h.phase)*5;
+        text("💗",h.x,y,25);
+    });
+}
+
+function drawCharacter(x,y,emoji,label,color,blink=false){
+    if(blink&&invincible>0&&Math.floor(elapsed*14)%2===0)return;
+
+    ctx.fillStyle="#00000018";
+    ctx.beginPath();
+    ctx.ellipse(x,y+18,20,7,0,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle=color;
+    ctx.beginPath();
+    ctx.arc(x,y,19,0,Math.PI*2);
+    ctx.fill();
+
+    text(emoji,x,y,27);
+    text(label,x,y+34,12,"#75456d");
+}
+
+function drawBoss(b){
+    // Vong ky nang
+    if(b.state==="warning"){
+        ctx.beginPath();
+        ctx.arc(b.x,b.y,b.radius,0,Math.PI*2);
+        ctx.fillStyle="#ff3f652b";
+        ctx.fill();
+
+        ctx.strokeStyle="#ff416f";
+        ctx.lineWidth=4;
+        ctx.setLineDash([8,6]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        text(b.name==="BA VỢ"?"⚡ ĐANG TÍCH LỰC":"💨 SÓNG ĐẨY",
+            b.x,b.y-b.radius-15,14,"#c83264");
+    }
+
+    ctx.fillStyle="#00000019";
+    ctx.beginPath();
+    ctx.ellipse(b.x,b.y+21,26,8,0,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle=b.name==="BA VỢ"?"#9f9be1":"#f0a3c8";
+    ctx.beginPath();
+    ctx.roundRect(b.x-24,b.y-8,48,31,12);
+    ctx.fill();
+
+    ctx.fillStyle="#ffdec6";
+    ctx.beginPath();
+    ctx.arc(b.x,b.y-20,21,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle="#ded4c9";
+    ctx.beginPath();
+    ctx.arc(b.x,b.y-26,22,Math.PI,Math.PI*2);
+    ctx.fill();
+
+    ctx.strokeStyle="#704a61";
+    ctx.lineWidth=3;
+    ctx.beginPath();
+    ctx.moveTo(b.x-13,b.y-27);
+    ctx.lineTo(b.x-4,b.y-23);
+    ctx.moveTo(b.x+13,b.y-27);
+    ctx.lineTo(b.x+4,b.y-23);
+    ctx.stroke();
+
+    ctx.fillStyle="#59364f";
+    ctx.beginPath();
+    ctx.arc(b.x-7,b.y-19,2.5,0,Math.PI*2);
+    ctx.arc(b.x+7,b.y-19,2.5,0,Math.PI*2);
+    ctx.fill();
+
+    text(b.emoji,b.x,b.y-19,20);
+    text(b.name,b.x,b.y-54,13,"#9b3f79");
+
+    // Loi thoai
+    if(b.chatTimer>0){
+        const maxChars=25;
+        const lines=[];
+
+        for(let i=0;i<b.chat.length;i+=maxChars){
+            lines.push(b.chat.slice(i,i+maxChars));
+        }
+
+        const width=220;
+        const height=lines.length*15+14;
+        const bx=Math.max(5,Math.min(W-width-5,b.x-width/2));
+        const by=Math.max(60,b.y-112);
+
+        roundedRect(bx,by,width,height,9,"#fffaf0");
+        ctx.strokeStyle="#edacd0";
+        ctx.lineWidth=2;
+        ctx.stroke();
+
+        lines.forEach((line,i)=>{
+            text(line,bx+width/2,by+12+i*15,10,"#8d416d");
+        });
+    }else if(distance(player,b)<170){
+        text(
+            b.name==="BA VỢ"
+                ?"ĐỪNG HÒNG DẪN CON TÔI ĐI!"
+                :"CẬU PHẢI QUA ĐƯỢC TUI ĐÃ!",
+            b.x,b.y-82,10,"#9b3f79"
+        );
+    }
+}
+
+function drawParticles(){
+    particles.forEach(p=>{
+        ctx.globalAlpha=Math.max(0,p.life);
+        ctx.fillStyle=p.color;
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,4,0,Math.PI*2);
+        ctx.fill();
+    });
+    ctx.globalAlpha=1;
+}
+
+function draw(){
+    drawBackground();
+    drawGate();
+    drawHearts();
+
+    bosses.forEach(drawBoss);
+
+    drawCharacter(girl.x,girl.y,"👧","Kim Phượng","#f8a6cc");
+    drawCharacter(player.x,player.y,"🧑","Hùng Duy","#a7a1ed",true);
+
+    drawParticles();
+
+    if(gameOver||won){
+        ctx.fillStyle="#43233d99";
+        ctx.fillRect(0,0,W,H);
+
+        text(won?"🎉 CHIẾN THẮNG!":"💔 THỬ LẠI NHA",W/2,H/2-15,32,"#ffffff");
+        text(won?"Hùng Duy đã đến bên Kim Phượng 💗":"Ba Vợ và Mẹ Vợ quá mạnh rồi 😂",W/2,H/2+28,18,"#fff1f8");
+    }
+}
+
+function loop(timestamp){
+    const dt=Math.min((timestamp-lastTime)/1000||0,0.035);
+    lastTime=timestamp;
+
+    update(dt);
+    draw();
+    updateUI();
+
+    requestAnimationFrame(loop);
+}
+
+// Dieu khien ban phim
+document.addEventListener("keydown",e=>{
+    if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)){
+        e.preventDefault();
+    }
+    keys[e.key]=true;
+});
+
+document.addEventListener("keyup",e=>{
+    keys[e.key]=false;
+});
+
+// Nut dieu khien tren dien thoai
+document.querySelectorAll("[data-key]").forEach(btn=>{
+    const key=btn.dataset.key;
+
+    btn.addEventListener("pointerdown",e=>{
+        e.preventDefault();
+        keys[key]=true;
+        btn.setPointerCapture(e.pointerId);
+    });
+
+    const release=()=>{
+        keys[key]=false;
+    };
+
+    btn.addEventListener("pointerup",release);
+    btn.addEventListener("pointercancel",release);
+    btn.addEventListener("lostpointercapture",release);
+});
+
+document.getElementById("startBtn").addEventListener("click",()=>{
+    document.getElementById("modal").style.display="none";
+    document.getElementById("letterTitle").textContent="💌 Gửi Kim Phượng 💗";
+    document.getElementById("letterText").textContent=
+        "Phượng ơi, hành trình đến bên em có hơi khó khăn vì Ba Vợ và Mẹ Vợ kiểm tra hơi gắt một chút 😂 Nhưng Duy vẫn muốn cố gắng để mang đến cho em thật nhiều niềm vui và những kỷ niệm đáng nhớ.";
+    resetGame();
+});
+
+document.getElementById("letterBtn").addEventListener("click",()=>{
+    document.getElementById("modal").style.display="flex";
+});
+
+document.getElementById("closeBtn").addEventListener("click",()=>{
+    document.getElementById("modal").style.display="none";
+});
+
+// Hien nut dieu khien cam ung tren man hinh nho
+if(window.matchMedia("(pointer: coarse)").matches){
+    document.querySelector(".controls").style.display="flex";
+}
+
+resetGame();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
